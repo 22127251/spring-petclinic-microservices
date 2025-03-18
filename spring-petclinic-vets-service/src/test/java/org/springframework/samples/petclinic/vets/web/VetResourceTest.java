@@ -59,4 +59,22 @@ class VetResourceTest {
             .andExpect(status().isOk())
             .andExpect(jsonPath("$[0].id").value(1));
     }
+
+    // My own test
+    @Test
+    void shouldReturnVetWithValidId() throws Exception {
+        Vet vet = new Vet();
+        vet.setId(1);
+        vet.setFirstName("John");
+        vet.setLastName("Doe");
+
+        given(vetRepository.findAll()).willReturn(asList(vet));
+
+        mvc.perform(get("/vets").accept(MediaType.APPLICATION_JSON))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$[0].id").value(1));
+    }
+
+    
+    
 }
