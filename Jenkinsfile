@@ -14,7 +14,7 @@ pipeline {
                     // Lấy danh sách các file đã thay đổi
                     env.CHANGED_FILES = sh(returnStdout: true, script: 'git diff --name-only HEAD^ HEAD').trim()
                     // Xác định service nào cần build/test
-                    def servicesToBuild = determineServices(env.CHANGED_FILES.readLines())
+                    def servicesToBuild = determineService(env.CHANGED_FILES.readLines())
 
                     // Kiểm tra xem có thay đổi nào nằm ngoài các thư mục service không
                     def changedOutsideServices = env.CHANGED_FILES.readLines().any { filePath ->
@@ -56,23 +56,10 @@ pipeline {
 
                         // JUnit report
                         junit(
-                            testResults: "*/target/surefire-reports/.xml",
+                            testResults: "**/target/surefire-reports/*.xml",
                             allowEmptyResults: true
                         )
 
-                    }else {
-                        // Test nhiều services
-                        echo "Testing services: ${env.SERVICES_TO_BUILD}"
-                        for (service in env.SERVICES_TO_BUILD) {
-                            echo "Testing: ${service}"
-                            sh "./mvnw -f ${service}/pom.xml test"
-
-                            // JUnit report (cho từng service)
-                            junit(
-                                testResults: "${service}/target/surefire-reports/*.xml",
-                                allowEmptyResults: true
-                            )
-                        }
                     }
                 }
             }
@@ -96,21 +83,10 @@ pipeline {
                         echo "Generating code coverage for all services"
                         sh "./mvnw  org.jacoco:jacoco-maven-plugin:report"
                          recordCoverage(
-                            tools: [[parser: 'JACOCO', pattern: "*/target/site/jacoco/**/.xml"]]
+                            tools: [[parser: 'JACOCO', pattern: "**/target/site/jacoco/**/*.xml"]]
                         )
 
-                    } else {
-                        // Code coverage cho nhiều service
-                         echo "Generating code coverage for services: ${env.SERVICES_TO_BUILD}"
-                         for(service in env.SERVICES_TO_BUILD){
-                            echo "Generating code coverage for service: ${service}"
-                            sh "./mvnw -f ${service}/pom.xml org.jacoco:jacoco-maven-plugin:report"
-                            recordCoverage(
-                                tools: [[parser: 'JACOCO', pattern: "${service}/target/site/jacoco/**/*.xml"]]
-                            )
-                        }
-
-                    }
+                    } 
                 }
             }
         }
@@ -133,16 +109,7 @@ pipeline {
                         sh "./mvnw clean install -DskipTests"
                         archiveArtifacts artifacts: "**/target/*.jar"
 
-                    } else {
-                         // Build nhiều services
-                        echo "Building services: ${env.SERVICES_TO_BUILD}"
-                        for(service in env.SERVICES_TO_BUILD){
-                          echo "Buiding ${service}"
-                          sh "./mvnw -f ${service}/pom.xml clean install -DskipTests"
-                          archiveArtifacts artifacts: "${service}/target/*.jar"
-
-                        }
-                    }
+                    } 
                 }
             }
         }
@@ -156,7 +123,7 @@ pipeline {
 }
 
 // Function to determine which services to build/test
-def determineServices(changedFiles) {
+def determineService(changedFiles) {
     println "Changed Files: ${changedFiles}"
     def services = [
         'spring-petclinic-customers-service',
@@ -165,17 +132,13 @@ def determineServices(changedFiles) {
         'spring-petclinic-api-gateway',
         'spring-petclinic-admin-server'
     ]
-    def servicesToBuild = []
+    // Không cần danh sách servicesToBuild nữa, vì chỉ cần tìm một
 
     for (service in services) {
-         if (changedFiles.any { it.contains(service) }) {
-            servicesToBuild.add(service)
+        if (changedFiles.any { it.contains(service) }) {
+            return service // Trả về ngay khi tìm thấy service đầu tiên
         }
     }
 
-  if (servicesToBuild.isEmpty()) {
-        return [] // Return empty list
-    } else {
-        return servicesToBuild // Trả về danh sách các service cần build
-    }
+    return null // Trả về null nếu không tìm thấy
 }
