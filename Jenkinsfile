@@ -131,7 +131,7 @@ pipeline {
                         // Build all services
                         echo "Building all services"
                         sh "./mvnw clean install -DskipTests"
-                        archiveArtifacts artifacts: "*/target/.jar"
+                        archiveArtifacts artifacts: "**/target/.jar"
 
                     } else {
                          // Build nhiều services
