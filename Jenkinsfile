@@ -14,18 +14,31 @@ pipeline {
                     // Lấy danh sách các file đã thay đổi
                     env.CHANGED_FILES = sh(returnStdout: true, script: 'git diff --name-only HEAD^ HEAD').trim()
                     // Xác định service nào cần build/test
-                    env.SERVICES_TO_BUILD = determineServices(env.CHANGED_FILES.readLines())
+                    def servicesToBuild = determineServices(env.CHANGED_FILES.readLines())
+
+                    // Kiểm tra xem có thay đổi nào nằm ngoài các thư mục service không
+                    def changedOutsideServices = env.CHANGED_FILES.readLines().any { filePath ->
+                        !servicesToBuild.any { service -> filePath.contains(service) }
+                    }
+
+                    if (changedOutsideServices) {
+                        env.SERVICES_TO_BUILD = "all" // Build tất cả nếu có thay đổi bên ngoài
+                    } else {
+                        env.SERVICES_TO_BUILD = servicesToBuild  // Sử dụng kết quả từ hàm determineServices
+                    }
+
+                    echo "Services to build: ${env.SERVICES_TO_BUILD}" // In ra để kiểm tra
                 }
             }
         }
 
-        stage('Test') {
+       stage('Test') {
             when {
                 expression { env.SERVICES_TO_BUILD != null }
             }
             steps {
                 script {
-                    if (env.SERVICES_TO_BUILD instanceof String) {
+                    if (env.SERVICES_TO_BUILD instanceof String && env.SERVICES_TO_BUILD != 'all') {
                         // Test 1 service
                         echo "Testing service: ${env.SERVICES_TO_BUILD}"
                         sh "./mvnw -f ${env.SERVICES_TO_BUILD}/pom.xml test"
@@ -36,7 +49,18 @@ pipeline {
                             allowEmptyResults: true
                         )
 
-                    } else {
+                    } else if (env.SERVICES_TO_BUILD == 'all'){
+                         // Test all services
+                        echo "Testing all services"
+                        sh "./mvnw test"
+
+                        // JUnit report
+                        junit(
+                            testResults: "*/target/surefire-reports/.xml",
+                            allowEmptyResults: true
+                        )
+
+                    }else {
                         // Test nhiều services
                         echo "Testing services: ${env.SERVICES_TO_BUILD}"
                         for (service in env.SERVICES_TO_BUILD) {
@@ -60,19 +84,27 @@ pipeline {
            }
             steps {
                 script {
-                   if (env.SERVICES_TO_BUILD instanceof String) {
+                   if (env.SERVICES_TO_BUILD instanceof String && env.SERVICES_TO_BUILD != 'all') {
                         // Code coverage cho 1 service
                         echo "Generating code coverage for service: ${env.SERVICES_TO_BUILD}"
-                        sh "./mvnw -f ${env.SERVICES_TO_BUILD}/pom.xml org.jacoco:jacoco-maven-plugin:report" // Thay đổi ở đây
+                        sh "./mvnw -f ${env.SERVICES_TO_BUILD}/pom.xml org.jacoco:jacoco-maven-plugin:report"
                         recordCoverage(
                             tools: [[parser: 'JACOCO', pattern: "${env.SERVICES_TO_BUILD}/target/site/jacoco/**/*.xml"]]
                         )
+                    } else if(env.SERVICES_TO_BUILD == 'all'){
+                         // Test all services
+                        echo "Generating code coverage for all services"
+                        sh "./mvnw  org.jacoco:jacoco-maven-plugin:report"
+                         recordCoverage(
+                            tools: [[parser: 'JACOCO', pattern: "*/target/site/jacoco/**/.xml"]]
+                        )
+
                     } else {
                         // Code coverage cho nhiều service
                          echo "Generating code coverage for services: ${env.SERVICES_TO_BUILD}"
                          for(service in env.SERVICES_TO_BUILD){
                             echo "Generating code coverage for service: ${service}"
-                            sh "./mvnw -f ${service}/pom.xml org.jacoco:jacoco-maven-plugin:report" // Thay đổi ở đây
+                            sh "./mvnw -f ${service}/pom.xml org.jacoco:jacoco-maven-plugin:report"
                             recordCoverage(
                                 tools: [[parser: 'JACOCO', pattern: "${service}/target/site/jacoco/**/*.xml"]]
                             )
@@ -89,11 +121,17 @@ pipeline {
             }
             steps {
                 script {
-                    if (env.SERVICES_TO_BUILD instanceof String) {
+                    if (env.SERVICES_TO_BUILD instanceof String && env.SERVICES_TO_BUILD != 'all') {
                         // Build 1 service
                         echo "Building service: ${env.SERVICES_TO_BUILD}"
                         sh "./mvnw -f ${env.SERVICES_TO_BUILD}/pom.xml clean install -DskipTests"
                         archiveArtifacts artifacts: "${env.SERVICES_TO_BUILD}/target/*.jar"
+
+                    } else if (env.SERVICES_TO_BUILD == 'all'){
+                        // Build all services
+                        echo "Building all services"
+                        sh "./mvnw clean install -DskipTests"
+                        archiveArtifacts artifacts: "*/target/.jar"
 
                     } else {
                          // Build nhiều services
@@ -136,11 +174,8 @@ def determineServices(changedFiles) {
     }
 
   if (servicesToBuild.isEmpty()) {
-        return null
-    } else if (servicesToBuild.size() == 1) {
-      return servicesToBuild[0]
-    }
-    else {
-        return servicesToBuild
+        return [] // Return empty list
+    } else {
+        return servicesToBuild // Trả về danh sách các service cần build
     }
 }
