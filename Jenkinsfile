@@ -5,11 +5,10 @@ pipeline {
         stage('Test') {
             steps {
                 echo 'Running Tests...'
-                sh './mvnw clean test' // Chạy các test case
+                sh './mvnw clean test'
             }
             post {
                 always {
-                    // Upload kết quả test lên Jenkins
                     junit '**/target/surefire-reports/*.xml'
                 }
             }
@@ -18,19 +17,19 @@ pipeline {
         stage('Code Coverage') {
             steps {
                 echo 'Generating Coverage Report...'
-                sh './mvnw org.jacoco:jacoco-maven-plugin:report' // Tạo báo cáo coverage với JaCoCo
-                recordCoverage(tools: [[parser: 'JACOCO']]) // Upload độ phủ testcase
+                sh './mvnw org.jacoco:jacoco-maven-plugin:report'
+                recordCoverage(tools: [[parser: 'JACOCO']])
             }
         }
 
         stage('Build') {
             steps {
                 echo 'Building Application...'
-                sh './mvnw clean install' // Build file .jar
+                sh './mvnw clean install'
             }
             post {
                 success {
-                    archiveArtifacts artifacts: '**/target/*.jar', fingerprint: true // Lưu artifact
+                    archiveArtifacts artifacts: '**/target/*.jar', fingerprint: true
                 }
             }
         }
